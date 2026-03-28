@@ -218,6 +218,8 @@ tailwind.config = {
 <script>
 // ========== shadcn-sketch engine (inline version of the library) ==========
 
+var sketchSeedCounter = 1;
+
 function roundedRectPath(x, y, w, h, r) {
   r = Math.min(r, w/2, h/2);
   return 'M'+(x+r)+','+y+' L'+(x+w-r)+','+y+' A'+r+','+r+' 0 0 1 '+(x+w)+','+(y+r)+' L'+(x+w)+','+(y+h-r)+' A'+r+','+r+' 0 0 1 '+(x+w-r)+','+(y+h)+' L'+(x+r)+','+(y+h)+' A'+r+','+r+' 0 0 1 '+x+','+(y+h-r)+' L'+x+','+(y+r)+' A'+r+','+r+' 0 0 1 '+(x+r)+','+y+' Z';
@@ -244,7 +246,11 @@ function applySketch(el, type, opts) {
   svg.setAttribute('data-sketch', 'overlay');
 
   var rc = rough.svg(svg);
-  var seed = opts.seed || (hashStr(el.className + (el.textContent||'').slice(0,20)) + 42);
+  // Use DOM position to ensure every instance gets a unique seed
+  if (!el.hasAttribute('data-sketch-seed')) {
+    el.setAttribute('data-sketch-seed', String(sketchSeedCounter++));
+  }
+  var seed = opts.seed || (parseInt(el.getAttribute('data-sketch-seed')) * 17 + 42);
   var stroke = opts.stroke || '#1c1917';
   var strokeWidth = opts.strokeWidth || 1.5;
   var roughness = opts.roughness || 1.2;

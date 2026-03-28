@@ -62,7 +62,7 @@ function applySketchToElement(el: HTMLElement, globalOpts: SketchConfig) {
     ...typeOpts,
     roughness: globalOpts.roughness ?? typeOpts.roughness,
     stroke: globalOpts.stroke ?? typeOpts.stroke,
-    seed: (globalOpts.seed ?? 42) + hashString(el.className + el.textContent?.slice(0, 20)),
+    seed: (globalOpts.seed ?? 42) + instanceCounter++,
   };
 
   if (type === "separator") {
@@ -91,15 +91,8 @@ function removeSketchFromElement(el: HTMLElement) {
   el.removeAttribute("data-sketch-applied");
 }
 
-/** Simple string hash for deterministic seeds */
-function hashString(s: string): number {
-  let hash = 0;
-  for (let i = 0; i < Math.min(s.length, 50); i++) {
-    hash = (hash << 5) - hash + s.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash) % 10000;
-}
+/** Global counter for unique seeds per element instance */
+let instanceCounter = 1;
 
 export function SketchProvider({
   children,
