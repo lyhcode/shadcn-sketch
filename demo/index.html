@@ -296,6 +296,20 @@ function applyAllSketch() {
     var isPrimary = el.getAttribute('data-variant') === 'default' || el.classList.contains('bg-neutral-900');
     if (isPrimary) {
       applySketch(el, 'button', { radius: 6, roughness: 1, fill: '#1c1917', fillStyle: 'cross-hatch' });
+      // Ensure text is above the cross-hatch fill
+      el.style.position = 'relative';
+      Array.from(el.childNodes).forEach(function(child) {
+        if (child.nodeType === 1 && !child.hasAttribute('data-sketch')) {
+          child.style.position = 'relative';
+          child.style.zIndex = '20';
+        } else if (child.nodeType === 3 && child.textContent.trim()) {
+          // Wrap text nodes in a span with z-index
+          var span = document.createElement('span');
+          span.style.cssText = 'position:relative;z-index:20;color:white;';
+          span.textContent = child.textContent;
+          el.replaceChild(span, child);
+        }
+      });
     } else {
       applySketch(el, 'button', { radius: 6, roughness: 0.8 });
     }
