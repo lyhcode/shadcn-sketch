@@ -1,0 +1,47 @@
+{
+  "name": "shadcn-sketch",
+  "version": "0.1.0",
+  "description": "Turn shadcn/ui components into hand-drawn wireframes with rough.js",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./fonts.css": "./dist/fonts.css"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "dev": "next dev --port 3333",
+    "build:lib": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "next build",
+    "lint": "eslint ."
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18",
+    "roughjs": ">=4.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "next": "^15",
+    "react": "^19",
+    "react-dom": "^19",
+    "roughjs": "^4.6.6",
+    "tailwindcss": "^4",
+    "typescript": "^5.7",
+    "tsup": "^8"
+  },
+  "keywords": ["shadcn", "shadcn-ui", "rough-js", "wireframe", "sketch", "hand-drawn", "excalidraw"],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lyhcode/shadcn-sketch"
+  }
+}
