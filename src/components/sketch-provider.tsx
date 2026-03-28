@@ -42,6 +42,40 @@ const SKETCH_SELECTORS = [
   ".rounded-lg.border.p-4",
 ].join(", ");
 
+/** Void elements cannot contain children – overlay must be a sibling */
+const VOID_ELEMENTS = new Set([
+  "INPUT", "IMG", "BR", "HR", "AREA", "COL", "EMBED",
+  "LINK", "META", "SOURCE", "TRACK", "WBR",
+]);
+
+/** Check if SVG overlay must be placed as a sibling instead of a child.
+ *  Needed for void elements and elements whose overflow would clip the SVG. */
+function needsSiblingOverlay(el: HTMLElement): boolean {
+  if (VOID_ELEMENTS.has(el.tagName)) return true;
+  const overflow = getComputedStyle(el).overflow;
+  return overflow !== "visible";
+}
+
+/** Remove sibling overlay placed after the element */
+function removeSiblingOverlay(el: HTMLElement) {
+  const next = el.nextElementSibling;
+  if (next?.getAttribute("data-sketch") === "overlay") next.remove();
+}
+
+/** Place SVG as a sibling positioned over the element */
+function insertSiblingOverlay(el: HTMLElement, svg: SVGSVGElement) {
+  const parent = el.parentElement;
+  if (!parent) return;
+  if (getComputedStyle(parent).position === "static") {
+    parent.style.position = "relative";
+  }
+  svg.style.cssText =
+    `position:absolute;pointer-events:none;z-index:10;overflow:visible;`
+    + `top:${el.offsetTop}px;left:${el.offsetLeft}px;`
+    + `width:${el.offsetWidth}px;height:${el.offsetHeight}px;`;
+  el.insertAdjacentElement("afterend", svg);
+}
+
 function applySketchToElement(el: HTMLElement, globalOpts: SketchConfig) {
   // Skip if already processed and not stale
   if (el.getAttribute("data-sketch-applied") === "true") return;
@@ -49,12 +83,11 @@ function applySketchToElement(el: HTMLElement, globalOpts: SketchConfig) {
   const type = detectComponentType(el);
   if (type === "unknown") return;
 
-  // Ensure positioned for overlay
-  const pos = getComputedStyle(el).position;
-  if (pos === "static") el.style.position = "relative";
+  const useSibling = needsSiblingOverlay(el);
 
   // Clear old overlays
   clearSketchOverlays(el);
+  if (useSibling) removeSiblingOverlay(el);
 
   // Get type-specific options merged with global
   const typeOpts = getOptionsForType(type, el);
@@ -66,19 +99,40 @@ function applySketchToElement(el: HTMLElement, globalOpts: SketchConfig) {
   };
 
   if (type === "separator") {
-    // Draw a rough line instead of rect
     const svg = createOverlaySvg();
     const w = el.offsetWidth;
-    drawSketchLine(svg, 0, 1, w, 1, mergedOpts);
-    el.appendChild(svg);
+    const h = el.offsetHeight;
+    const isThin = h <= 10;
+    const lineY = isThin ? 2 : h - 1;
+    drawSketchLine(svg, 0, lineY, w, lineY, mergedOpts);
+    if (useSibling) {
+      insertSiblingOverlay(el, svg);
+    } else {
+      el.appendChild(svg);
+    }
+    // Must set AFTER placement — cssText in createOverlaySvg/insertSiblingOverlay overwrites earlier styles
+    if (isThin) svg.style.height = "4px";
   } else {
-    // Draw rough border
     const svg = drawSketchBorder(el, mergedOpts);
-    el.appendChild(svg);
+    if (useSibling) {
+      insertSiblingOverlay(el, svg);
+    } else {
+      const pos = getComputedStyle(el).position;
+      if (pos === "static") el.style.position = "relative";
+      el.appendChild(svg);
+    }
   }
 
   // Hide CSS borders (rough.js replaces them)
-  el.style.borderColor = "transparent";
+  if (useSibling) {
+    // Hide border visually but keep border-width — using border:none
+    // would disrupt border-collapse:collapse in child tables.
+    // Use !important because CSS frameworks (Tailwind) may use !important.
+    el.style.setProperty("border-color", "transparent", "important");
+    el.style.setProperty("overflow", "hidden", "important");
+  } else {
+    el.style.borderColor = "transparent";
+  }
   el.style.boxShadow = "none";
 
   el.setAttribute("data-sketch-applied", "true");
@@ -86,7 +140,10 @@ function applySketchToElement(el: HTMLElement, globalOpts: SketchConfig) {
 
 function removeSketchFromElement(el: HTMLElement) {
   clearSketchOverlays(el);
-  el.style.borderColor = "";
+  removeSiblingOverlay(el);
+  el.style.removeProperty("border");
+  el.style.removeProperty("border-color");
+  el.style.removeProperty("overflow");
   el.style.boxShadow = "";
   el.removeAttribute("data-sketch-applied");
 }

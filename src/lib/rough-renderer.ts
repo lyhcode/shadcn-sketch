@@ -4,6 +4,8 @@ import rough from "roughjs";
 export interface SketchOptions {
   /** How "sketchy" the lines are. 0 = straight, 2 = very rough. Default 1.2 */
   roughness?: number;
+  /** How curvy straight lines are. 0 = straight, 1 = default. */
+  bowing?: number;
   /** Stroke color. Default '#1c1917' */
   stroke?: string;
   /** Stroke width. Default 1.5 */
@@ -27,7 +29,8 @@ const DEFAULT_OPTIONS: Required<
   radius: 12,
 };
 
-/** Build an SVG path string for a rounded rectangle */
+/** Build an SVG path string for a rounded rectangle.
+ *  Uses cubic bezier curves instead of arcs for smoother rough.js rendering. */
 export function roundedRectPath(
   x: number,
   y: number,
@@ -36,7 +39,108 @@ export function roundedRectPath(
   r: number
 ): string {
   r = Math.min(r, w / 2, h / 2);
-  return `M${x + r},${y} L${x + w - r},${y} A${r},${r} 0 0 1 ${x + w},${y + r} L${x + w},${y + h - r} A${r},${r} 0 0 1 ${x + w - r},${y + h} L${x + r},${y + h} A${r},${r} 0 0 1 ${x},${y + h - r} L${x},${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
+  const k = r * 0.5522847498;
+  const right = x + w;
+  const bottom = y + h;
+  return [
+    `M${x + r},${y}`,
+    `L${right - r},${y}`,
+    `C${right - r + k},${y} ${right},${y + r - k} ${right},${y + r}`,
+    `L${right},${bottom - r}`,
+    `C${right},${bottom - r + k} ${right - r + k},${bottom} ${right - r},${bottom}`,
+    `L${x + r},${bottom}`,
+    `C${x + r - k},${bottom} ${x},${bottom - r + k} ${x},${bottom - r}`,
+    `L${x},${y + r}`,
+    `C${x},${y + r - k} ${x + r - k},${y} ${x + r},${y}`,
+  ].join(" ");
+}
+
+/** Sample a cubic bezier curve at parameter t */
+function bezierPoint(
+  t: number,
+  p0: [number, number],
+  p1: [number, number],
+  p2: [number, number],
+  p3: [number, number]
+): [number, number] {
+  const mt = 1 - t;
+  return [
+    mt * mt * mt * p0[0] + 3 * mt * mt * t * p1[0] + 3 * mt * t * t * p2[0] + t * t * t * p3[0],
+    mt * mt * mt * p0[1] + 3 * mt * mt * t * p1[1] + 3 * mt * t * t * p2[1] + t * t * t * p3[1],
+  ];
+}
+
+/** Sample points along a rounded rectangle for use with rc.curve().
+ *  Returns a closed loop of points (last point === first point + overlap for smooth closure). */
+export function sampleRoundedRect(
+  x: number, y: number, w: number, h: number, r: number,
+  pointsPerCorner = 8, pointsPerEdge = 3,
+): [number, number][] {
+  r = Math.min(r, w / 2, h / 2);
+  const k = r * 0.5522847498;
+  const right = x + w;
+  const bottom = y + h;
+  const pts: [number, number][] = [];
+
+  // Helper: add evenly spaced points on a line (excluding start)
+  function addLine(x1: number, y1: number, x2: number, y2: number) {
+    for (let i = 1; i <= pointsPerEdge; i++) {
+      const t = i / (pointsPerEdge + 1);
+      pts.push([x1 + (x2 - x1) * t, y1 + (y2 - y1) * t]);
+    }
+    pts.push([x2, y2]); // endpoint
+  }
+
+  // Helper: add bezier curve points (excluding start)
+  function addCorner(
+    p0: [number, number], p1: [number, number],
+    p2: [number, number], p3: [number, number],
+  ) {
+    for (let i = 1; i <= pointsPerCorner; i++) {
+      pts.push(bezierPoint(i / pointsPerCorner, p0, p1, p2, p3));
+    }
+  }
+
+  // Start point
+  pts.push([x + r, y]);
+
+  // Top edge → Top-right corner
+  addLine(x + r, y, right - r, y);
+  addCorner([right - r, y], [right - r + k, y], [right, y + r - k], [right, y + r]);
+
+  // Right edge → Bottom-right corner
+  addLine(right, y + r, right, bottom - r);
+  addCorner([right, bottom - r], [right, bottom - r + k], [right - r + k, bottom], [right - r, bottom]);
+
+  // Bottom edge → Bottom-left corner
+  addLine(right - r, bottom, x + r, bottom);
+  addCorner([x + r, bottom], [x + r - k, bottom], [x, bottom - r + k], [x, bottom - r]);
+
+  // Left edge → Top-left corner
+  addLine(x, bottom - r, x, y + r);
+  addCorner([x, y + r], [x, y + r - k], [x + r - k, y], [x + r, y]);
+
+  // Overlap first few points for smooth closure
+  pts.push(pts[1], pts[2], pts[3]);
+
+  return pts;
+}
+
+/** Build an SVG path using only L commands (no C bezier).
+ *  This ensures preserveVertices works on ALL endpoints,
+ *  since rough.js's _bezierTo ignores preserveVertices. */
+export function roundedRectLinePath(
+  x: number, y: number, w: number, h: number, r: number,
+  pointsPerCorner = 12, pointsPerEdge = 3,
+): string {
+  const pts = sampleRoundedRect(x, y, w, h, r, pointsPerCorner, pointsPerEdge);
+  // Remove the overlap closure points (last 3)
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  const end = pts.length - 3; // skip overlap points
+  for (let i = 1; i < end; i++) {
+    d += ` L${pts[i][0]},${pts[i][1]}`;
+  }
+  return d;
 }
 
 /** Create an SVG element positioned as an overlay */
@@ -48,9 +152,12 @@ export function createOverlaySvg(): SVGSVGElement {
   return svg;
 }
 
-/** Remove existing sketch overlays from an element */
+/** Remove existing sketch overlays from an element (direct children only,
+ *  so we don't accidentally remove overlays from nested sketch elements). */
 export function clearSketchOverlays(el: HTMLElement) {
-  el.querySelectorAll('[data-sketch="overlay"]').forEach((s) => s.remove());
+  for (const child of Array.from(el.children)) {
+    if (child.getAttribute("data-sketch") === "overlay") child.remove();
+  }
 }
 
 /** Draw a rough rounded rectangle border on the element */
@@ -66,14 +173,26 @@ export function drawSketchBorder(
   const rc = rough.svg(svg);
 
   const pad = 1;
-  const d = roundedRectPath(pad, pad, width - pad * 2, height - pad * 2, opts.radius);
+  const seed = opts.seed ?? Math.floor(Math.random() * 10000);
+  const shortEdge = Math.min(width, height);
+  const isSmall = shortEdge < 60;
+
+  // Small elements: bezier C commands give smooth rounded corners.
+  //   _bezierTo's spike from ignoring preserveVertices is tiny at small scale.
+  // Large elements: L-only commands avoid visible _bezierTo spikes at corners.
+  const d = isSmall
+    ? roundedRectPath(pad, pad, width - pad * 2, height - pad * 2, opts.radius)
+    : roundedRectLinePath(pad, pad, width - pad * 2, height - pad * 2, opts.radius, 12,
+        shortEdge < 150 ? 2 : 3);
 
   svg.appendChild(
     rc.path(d, {
       stroke: opts.stroke,
       strokeWidth: opts.strokeWidth,
       roughness: opts.roughness,
-      seed: opts.seed ?? Math.floor(Math.random() * 10000),
+      bowing: opts.bowing ?? (isSmall ? 0.5 : 0.6),
+      seed,
+      preserveVertices: true,
       fill: opts.fill,
       fillStyle: opts.fillStyle as any,
       fillWeight: opts.fill ? 1 : undefined,
@@ -181,7 +300,7 @@ export function getOptionsForType(
 ): SketchOptions {
   switch (type) {
     case "card":
-      return { radius: 12, roughness: 1.2 };
+      return { radius: 12, roughness: 1.2, bowing: 0.5 };
     case "button": {
       const isPrimary =
         el.classList.contains("bg-primary") ||
@@ -201,13 +320,13 @@ export function getOptionsForType(
     case "input":
       return { radius: 6, roughness: 0.8 };
     case "table":
-      return { radius: 4, roughness: 0.6 };
+      return { radius: 4, roughness: 0.6, bowing: 0.3 };
     case "tabs":
-      return { radius: 6, roughness: 0.8 };
+      return { radius: 6, roughness: 0.6, bowing: 0.3 };
     case "alert":
-      return { radius: 8, roughness: 1 };
+      return { radius: 8, roughness: 1, bowing: 0.5 };
     case "dialog":
-      return { radius: 12, roughness: 1 };
+      return { radius: 12, roughness: 1, bowing: 0.5 };
     case "separator":
       return { roughness: 1 };
     default:
