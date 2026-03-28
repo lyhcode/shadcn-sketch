@@ -32,6 +32,7 @@ body.sketch-mode code { font-family: 'Courier New', monospace !important; }
 body.sketch-mode [data-sketch-applied="true"] {
   border-color: transparent !important;
   box-shadow: none !important;
+  overflow: visible !important;
 }
 
 /* rough.js overlay always on top */
@@ -150,7 +151,7 @@ tailwind.config = {
 <!-- ===== DEMO: Table ===== -->
 <section class="mb-12">
   <h2 class="text-xl font-semibold mb-4">Table</h2>
-  <div data-slot="card" class="rounded-xl border bg-card shadow-sm overflow-hidden">
+  <div data-slot="card" class="rounded-xl border bg-card shadow-sm overflow-visible">
     <table data-slot="table" class="w-full text-sm">
       <thead>
         <tr class="border-b bg-neutral-50">
